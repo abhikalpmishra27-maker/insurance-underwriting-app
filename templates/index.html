@@ -1,0 +1,1255 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Insurance Underwriting Tool</title>
+
+  <!-- jsPDF + AutoTable (CDN) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
+
+  <style>
+    /* ── Design Tokens ─────────────────────────────────────────── */
+    :root {
+      --bg:          #0d0f14;
+      --surface:     #161b27;
+      --surface2:    #1e2535;
+      --border:      #2a3245;
+      --gold:        #c8a84b;
+      --gold-light:  #e2c46c;
+      --gold-dark:   #9a7a2f;
+      --text:        #e8eaf0;
+      --text-muted:  #7a8499;
+      --green:       #2ecc71;
+      --yellow:      #f1c40f;
+      --red:         #e74c3c;
+      --blue:        #3498db;
+      --radius:      12px;
+      --shadow:      0 8px 32px rgba(0,0,0,.5);
+    }
+
+    /* ── Reset & Base ───────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+    }
+    a { color: var(--gold); }
+
+    /* ── Header ─────────────────────────────────────────────────── */
+    header {
+      background: linear-gradient(135deg, var(--surface) 0%, #0d1220 100%);
+      border-bottom: 1px solid var(--border);
+      padding: 20px 40px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+    header .logo {
+      width: 44px; height: 44px;
+      background: linear-gradient(135deg, var(--gold-dark), var(--gold));
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 22px;
+    }
+    header h1 { font-size: 1.4rem; font-weight: 700; color: var(--gold-light); }
+    header p  { font-size: .8rem; color: var(--text-muted); }
+
+    /* ── Main Layout ─────────────────────────────────────────────── */
+    main { max-width: 1100px; margin: 0 auto; padding: 32px 24px; }
+
+    /* ── Progress Steps ──────────────────────────────────────────── */
+    .steps {
+      display: flex; justify-content: center; gap: 0;
+      margin-bottom: 36px;
+    }
+    .step {
+      display: flex; align-items: center; gap: 8px;
+      font-size: .8rem; color: var(--text-muted);
+      transition: color .3s;
+    }
+    .step.active { color: var(--gold-light); }
+    .step.done   { color: var(--green); }
+    .step-num {
+      width: 28px; height: 28px; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      font-weight: 700; font-size: .75rem;
+      background: var(--surface2); border: 2px solid var(--border);
+      transition: all .3s;
+    }
+    .step.active .step-num { background: var(--gold); border-color: var(--gold); color: #000; }
+    .step.done   .step-num { background: var(--green); border-color: var(--green); color: #fff; }
+    .step-sep { width: 48px; height: 2px; background: var(--border); margin: 0 4px; align-self: center; }
+    .step-sep.done { background: var(--green); }
+
+    /* ── Cards ───────────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px;
+      box-shadow: var(--shadow);
+    }
+    .card-title {
+      font-size: 1.15rem; font-weight: 700;
+      color: var(--gold-light);
+      margin-bottom: 20px;
+      display: flex; align-items: center; gap: 10px;
+    }
+
+    /* ── Upload Zone ─────────────────────────────────────────────── */
+    #upload-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 56px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: all .3s;
+    }
+    #upload-zone:hover, #upload-zone.dragover {
+      border-color: var(--gold);
+      background: rgba(200,168,75,.05);
+    }
+    #upload-zone .upload-icon { font-size: 48px; margin-bottom: 16px; }
+    #upload-zone p { color: var(--text-muted); margin: 6px 0; }
+    #upload-zone .hint { font-size: .75rem; }
+    #file-input { display: none; }
+
+    /* ── Buttons ─────────────────────────────────────────────────── */
+    .btn {
+      display: inline-flex; align-items: center; gap: 8px;
+      padding: 10px 22px; border-radius: 8px; font-weight: 600;
+      font-size: .9rem; cursor: pointer; border: none;
+      transition: all .2s; text-decoration: none;
+    }
+    .btn-gold {
+      background: linear-gradient(135deg, var(--gold-dark), var(--gold));
+      color: #000;
+    }
+    .btn-gold:hover { filter: brightness(1.1); }
+    .btn-outline {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+    .btn-outline:hover { border-color: var(--gold); color: var(--gold); }
+    .btn-green { background: var(--green); color: #000; }
+    .btn-green:hover { filter: brightness(1.1); }
+    .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+    /* ── Spinner ─────────────────────────────────────────────────── */
+    .spinner {
+      display: inline-block; width: 18px; height: 18px;
+      border: 3px solid rgba(255,255,255,.2);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── File Preview ────────────────────────────────────────────── */
+    #file-preview {
+      display: none;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 14px 18px;
+      margin-top: 16px;
+      align-items: center; gap: 14px;
+    }
+    #file-preview .file-icon { font-size: 28px; }
+    #file-preview .file-info { flex: 1; }
+    #file-preview .file-name { font-weight: 600; }
+    #file-preview .file-size { font-size: .8rem; color: var(--text-muted); }
+
+    /* ── Form Grid ───────────────────────────────────────────────── */
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+    @media(max-width:640px){ .form-grid { grid-template-columns: 1fr; } }
+    .form-group { display: flex; flex-direction: column; gap: 6px; }
+    .form-group.span2 { grid-column: span 2; }
+    @media(max-width:640px){ .form-group.span2 { grid-column: span 1; } }
+    label { font-size: .8rem; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: .5px; }
+    input, select, textarea {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      padding: 10px 14px;
+      font-size: .9rem;
+      width: 100%;
+      transition: border-color .2s;
+    }
+    input:focus, select:focus, textarea:focus {
+      outline: none;
+      border-color: var(--gold);
+    }
+    select option { background: var(--surface2); }
+
+    /* ── Section Heading inside card ─────────────────────────────── */
+    .section-heading {
+      font-size: .85rem; font-weight: 700;
+      color: var(--gold);
+      text-transform: uppercase; letter-spacing: 1px;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 8px;
+      margin: 24px 0 14px;
+    }
+    .section-heading:first-child { margin-top: 0; }
+
+    /* ── Result Cards ────────────────────────────────────────────── */
+    .decision-banner {
+      border-radius: var(--radius);
+      padding: 28px;
+      text-align: center;
+      margin-bottom: 24px;
+    }
+    .decision-banner.accept    { background: rgba(46,204,113,.15); border: 1px solid rgba(46,204,113,.4); }
+    .decision-banner.loading   { background: rgba(241,196,15,.12); border: 1px solid rgba(241,196,15,.4); }
+    .decision-banner.decline   { background: rgba(231,76,60,.12);  border: 1px solid rgba(231,76,60,.4); }
+    .decision-banner.manual    { background: rgba(52,152,219,.12); border: 1px solid rgba(52,152,219,.4); }
+    .decision-label { font-size: .75rem; text-transform: uppercase; letter-spacing: 2px; opacity: .7; }
+    .decision-value { font-size: 1.5rem; font-weight: 800; margin-top: 8px; }
+
+    .metric-row { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 20px; }
+    .metric-box {
+      flex: 1; min-width: 120px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 14px;
+      text-align: center;
+    }
+    .metric-box .m-label { font-size: .7rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; }
+    .metric-box .m-value { font-size: 1.4rem; font-weight: 800; color: var(--gold-light); margin-top: 4px; }
+
+    /* ── EMR breakdown table ─────────────────────────────────────── */
+    .emr-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+    .emr-table th, .emr-table td {
+      padding: 9px 14px; border-bottom: 1px solid var(--border); text-align: left;
+    }
+    .emr-table th { color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: .75rem; }
+    .emr-table tr:last-child td { border-bottom: none; font-weight: 700; color: var(--gold); }
+
+    /* ── Flags ───────────────────────────────────────────────────── */
+    .flag-list { display: flex; flex-direction: column; gap: 8px; }
+    .flag-item {
+      display: flex; align-items: flex-start; gap: 10px;
+      padding: 10px 14px; border-radius: 8px; font-size: .85rem;
+    }
+    .flag-item.DECLINE   { background: rgba(231,76,60,.1);  border-left: 3px solid var(--red); }
+    .flag-item.MANUAL_UW { background: rgba(52,152,219,.1); border-left: 3px solid var(--blue); }
+    .flag-item.WARNING   { background: rgba(241,196,15,.1); border-left: 3px solid var(--yellow); }
+    .flag-item.INFO      { background: rgba(46,204,113,.1); border-left: 3px solid var(--green); }
+    .flag-badge { font-size: .7rem; font-weight: 700; text-transform: uppercase; padding: 2px 7px; border-radius: 4px; white-space: nowrap; }
+    .DECLINE   .flag-badge { background: var(--red);    color: #fff; }
+    .MANUAL_UW .flag-badge { background: var(--blue);   color: #fff; }
+    .WARNING   .flag-badge { background: var(--yellow);  color: #000; }
+    .INFO      .flag-badge { background: var(--green);   color: #000; }
+
+    /* ── Premium Section ─────────────────────────────────────────── */
+    .premium-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 20px; }
+    .premium-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 16px;
+    }
+    .premium-card .p-title { font-size: .75rem; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; }
+    .premium-card .p-amount { font-size: 1.3rem; font-weight: 800; color: var(--gold-light); margin-top: 6px; }
+    .premium-card .p-detail { font-size: .75rem; color: var(--text-muted); margin-top: 4px; }
+    .premium-grand {
+      background: linear-gradient(135deg, rgba(200,168,75,.15), rgba(200,168,75,.05));
+      border: 1px solid var(--gold-dark);
+      border-radius: 10px;
+      padding: 18px;
+      text-align: center;
+    }
+    .premium-grand .pg-label { color: var(--text-muted); font-size: .8rem; text-transform: uppercase; letter-spacing: 1px; }
+    .premium-grand .pg-amount { font-size: 2rem; font-weight: 900; color: var(--gold); margin-top: 8px; }
+
+    /* ── Tabs ────────────────────────────────────────────────────── */
+    .tab-bar { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 20px; }
+    .tab-btn {
+      padding: 8px 18px; font-size: .85rem; font-weight: 600;
+      cursor: pointer; border: none; background: transparent;
+      color: var(--text-muted); border-bottom: 2px solid transparent;
+      transition: all .2s; margin-bottom: -1px;
+    }
+    .tab-btn.active { color: var(--gold); border-bottom-color: var(--gold); }
+
+    /* ── Hidden/Shown ────────────────────────────────────────────── */
+    .hidden { display: none !important; }
+
+    /* ── Toast ───────────────────────────────────────────────────── */
+    #toast {
+      position: fixed; bottom: 24px; right: 24px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 10px; padding: 14px 20px;
+      font-size: .9rem; box-shadow: var(--shadow);
+      transform: translateY(80px); opacity: 0;
+      transition: all .3s; z-index: 9999;
+      max-width: 360px;
+    }
+    #toast.show { transform: translateY(0); opacity: 1; }
+    #toast.error { border-color: var(--red); color: var(--red); }
+    #toast.success { border-color: var(--green); color: var(--green); }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">🛡️</div>
+  <div>
+    <h1>AI Insurance Underwriting Tool</h1>
+    <p>Automated life insurance risk assessment powered by Claude AI</p>
+  </div>
+</header>
+
+<main>
+
+  <!-- Progress Steps -->
+  <div class="steps">
+    <div class="step active" id="s1"><div class="step-num">1</div><span>Upload</span></div>
+    <div class="step-sep" id="sep1"></div>
+    <div class="step" id="s2"><div class="step-num">2</div><span>Extract</span></div>
+    <div class="step-sep" id="sep2"></div>
+    <div class="step" id="s3"><div class="step-num">3</div><span>Review</span></div>
+    <div class="step-sep" id="sep3"></div>
+    <div class="step" id="s4"><div class="step-num">4</div><span>Results</span></div>
+  </div>
+
+  <!-- ── STEP 1: Upload ── -->
+  <div id="page-upload">
+    <div class="card">
+      <div class="card-title">📄 Upload Proposal Form</div>
+      <div id="upload-zone" onclick="document.getElementById('file-input').click()">
+        <div class="upload-icon">📂</div>
+        <p><strong>Click to browse</strong> or drag &amp; drop your PDF here</p>
+        <p class="hint">PDF only · Max 5 MB</p>
+      </div>
+      <input type="file" id="file-input" accept=".pdf" />
+
+      <div id="file-preview">
+        <div class="file-icon">📋</div>
+        <div class="file-info">
+          <div class="file-name" id="preview-name">—</div>
+          <div class="file-size" id="preview-size">—</div>
+        </div>
+        <button class="btn btn-outline" onclick="clearFile()">✕ Remove</button>
+      </div>
+
+      <div style="margin-top:24px; display:flex; justify-content:flex-end;">
+        <button class="btn btn-gold" id="btn-extract" disabled onclick="extractData()">
+          ✨ Extract with AI
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── STEP 2: Extracting ── -->
+  <div id="page-extracting" class="hidden">
+    <div class="card" style="text-align:center; padding:60px;">
+      <div style="font-size:48px; margin-bottom:20px;">🤖</div>
+      <h2 style="color:var(--gold-light); margin-bottom:12px;">Analysing Document…</h2>
+      <p style="color:var(--text-muted); margin-bottom:24px;">Claude is reading your proposal form and extracting structured data.</p>
+      <div class="spinner" style="width:36px;height:36px;border-width:4px;"></div>
+    </div>
+  </div>
+
+  <!-- ── STEP 3: Review ── -->
+  <div id="page-review" class="hidden">
+    <div class="card">
+      <div class="card-title">✏️ Review &amp; Edit Extracted Data</div>
+
+      <!-- Personal Details -->
+      <div class="section-heading">Personal Details</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Full Name</label>
+          <input type="text" id="f-name" />
+        </div>
+        <div class="form-group">
+          <label>Gender</label>
+          <select id="f-gender">
+            <option value="">— select —</option>
+            <option>Male</option>
+            <option>Female</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Date of Birth (DD/MM/YYYY)</label>
+          <input type="text" id="f-dob" placeholder="15/08/1985" />
+        </div>
+        <div class="form-group">
+          <label>Place of Residence</label>
+          <input type="text" id="f-residence" />
+        </div>
+        <div class="form-group">
+          <label>Profession</label>
+          <input type="text" id="f-profession" />
+        </div>
+        <div class="form-group">
+          <label>Height (cm)</label>
+          <input type="number" id="f-height" min="100" max="250" step="0.1" />
+        </div>
+        <div class="form-group">
+          <label>Weight (kg)</label>
+          <input type="number" id="f-weight" min="30" max="300" step="0.1" />
+        </div>
+        <div class="form-group">
+          <label>Yearly Income (₹)</label>
+          <input type="number" id="f-income" min="0" />
+        </div>
+        <div class="form-group">
+          <label>Source of Income</label>
+          <select id="f-source">
+            <option value="">— select —</option>
+            <option value="salary">Salary</option>
+            <option value="business">Business</option>
+            <option value="profession">Profession</option>
+            <option value="self-employed">Self-Employed</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Cover Amounts -->
+      <div class="section-heading">Cover Amounts</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Base Life Cover (₹)</label>
+          <input type="number" id="f-base" min="0" />
+        </div>
+        <div class="form-group">
+          <label>Critical Illness Cover (₹)</label>
+          <input type="number" id="f-cir" min="0" />
+        </div>
+        <div class="form-group">
+          <label>Accident Cover (₹)</label>
+          <input type="number" id="f-accident" min="0" />
+        </div>
+        <div class="form-group">
+          <label>Parent Health Status</label>
+          <select id="f-parents">
+            <option value="">— select —</option>
+            <option value="both_above_65">Both Parents Above 65</option>
+            <option value="one_above_65">One Parent Above 65</option>
+            <option value="both_below_65">Both Parents Below 65</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Health Conditions -->
+      <div class="section-heading">Health Conditions (Severity: 0=None, 1–4)</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Thyroid (0–4)</label>
+          <input type="number" id="f-thyroid" min="0" max="4" step="1" value="0" />
+        </div>
+        <div class="form-group">
+          <label>Asthma (0–4)</label>
+          <input type="number" id="f-asthma" min="0" max="4" step="1" value="0" />
+        </div>
+        <div class="form-group">
+          <label>Hypertension (0–4)</label>
+          <input type="number" id="f-hypertension" min="0" max="4" step="1" value="0" />
+        </div>
+        <div class="form-group">
+          <label>Diabetes (0–4)</label>
+          <input type="number" id="f-diabetes" min="0" max="4" step="1" value="0" />
+        </div>
+        <div class="form-group">
+          <label>Gut Disorder (0–4)</label>
+          <input type="number" id="f-gut" min="0" max="4" step="1" value="0" />
+        </div>
+      </div>
+
+      <!-- Habits -->
+      <div class="section-heading">Lifestyle Habits</div>
+      <div class="form-grid">
+        <div class="form-group">
+          <label>Smoking</label>
+          <select id="f-smoking">
+            <option value="none">None</option>
+            <option value="occasionally">Occasionally</option>
+            <option value="moderate">Moderate</option>
+            <option value="high">High</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Alcohol</label>
+          <select id="f-alcohol">
+            <option value="none">None</option>
+            <option value="occasionally">Occasionally</option>
+            <option value="moderate">Moderate</option>
+            <option value="high">High</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label>Tobacco</label>
+          <select id="f-tobacco">
+            <option value="none">None</option>
+            <option value="occasionally">Occasionally</option>
+            <option value="moderate">Moderate</option>
+            <option value="high">High</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Risky Occupations -->
+      <div class="section-heading">Risky Occupations (check all that apply)</div>
+      <div style="display:flex; flex-wrap:wrap; gap:12px; margin-bottom:8px;">
+        <label style="text-transform:none; font-size:.9rem; display:flex; align-items:center; gap:6px; cursor:pointer;">
+          <input type="checkbox" id="occ-athlete" value="athlete" /> Athlete
+        </label>
+        <label style="text-transform:none; font-size:.9rem; display:flex; align-items:center; gap:6px; cursor:pointer;">
+          <input type="checkbox" id="occ-pilot" value="pilot" /> Pilot
+        </label>
+        <label style="text-transform:none; font-size:.9rem; display:flex; align-items:center; gap:6px; cursor:pointer;">
+          <input type="checkbox" id="occ-driver" value="driver" /> Driver
+        </label>
+        <label style="text-transform:none; font-size:.9rem; display:flex; align-items:center; gap:6px; cursor:pointer;">
+          <input type="checkbox" id="occ-navy" value="merchant_navy" /> Merchant Navy
+        </label>
+        <label style="text-transform:none; font-size:.9rem; display:flex; align-items:center; gap:6px; cursor:pointer;">
+          <input type="checkbox" id="occ-oilgas" value="oil_gas" /> Oil &amp; Gas
+        </label>
+      </div>
+
+      <div style="display:flex; gap:12px; justify-content:flex-end; margin-top:28px; flex-wrap:wrap;">
+        <button class="btn btn-outline" onclick="showPage('upload')">← Back</button>
+        <button class="btn btn-gold" onclick="runUnderwriting()">⚡ Run Underwriting</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── STEP 4: Results ── -->
+  <div id="page-results" class="hidden">
+    <div id="results-container"></div>
+    <div style="display:flex; gap:12px; justify-content:flex-end; margin-top:20px; flex-wrap:wrap;">
+      <button class="btn btn-outline" onclick="showPage('review')">← Edit Data</button>
+      <button class="btn btn-green" onclick="downloadPDF()">⬇ Download PDF Report</button>
+      <button class="btn btn-outline" onclick="showPage('upload'); clearFile()">🔄 New Application</button>
+    </div>
+  </div>
+
+</main>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<script>
+// ══════════════════════════════════════════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════════════════════════════════════════
+let currentFile = null;
+let lastReport  = null;
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  NAVIGATION
+// ══════════════════════════════════════════════════════════════════════════════
+function showPage(name) {
+  ['upload','extracting','review','results'].forEach(p => {
+    document.getElementById('page-' + p).classList.add('hidden');
+  });
+  document.getElementById('page-' + name).classList.remove('hidden');
+
+  const steps = { upload:1, extracting:2, review:3, results:4 };
+  const cur = steps[name] || 1;
+  [1,2,3,4].forEach(i => {
+    const s = document.getElementById('s' + i);
+    s.classList.remove('active','done');
+    if (i === cur) s.classList.add('active');
+    else if (i < cur) s.classList.add('done');
+    if (i < 4) {
+      const sep = document.getElementById('sep' + i);
+      sep.classList.toggle('done', i < cur);
+    }
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  FILE UPLOAD
+// ══════════════════════════════════════════════════════════════════════════════
+const uploadZone = document.getElementById('upload-zone');
+uploadZone.addEventListener('dragover',  e => { e.preventDefault(); uploadZone.classList.add('dragover'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadZone.classList.remove('dragover');
+  const f = e.dataTransfer.files[0];
+  if (f) handleFile(f);
+});
+document.getElementById('file-input').addEventListener('change', e => {
+  if (e.target.files[0]) handleFile(e.target.files[0]);
+});
+
+function handleFile(file) {
+  if (!file.name.toLowerCase().endsWith('.pdf')) { showToast('Only PDF files are supported.', 'error'); return; }
+  if (file.size > 5 * 1024 * 1024) { showToast('File exceeds 5 MB limit.', 'error'); return; }
+  currentFile = file;
+  document.getElementById('preview-name').textContent = file.name;
+  document.getElementById('preview-size').textContent = formatBytes(file.size);
+  const fp = document.getElementById('file-preview');
+  fp.style.display = 'flex';
+  document.getElementById('btn-extract').disabled = false;
+}
+
+function clearFile() {
+  currentFile = null;
+  document.getElementById('file-input').value = '';
+  document.getElementById('file-preview').style.display = 'none';
+  document.getElementById('btn-extract').disabled = true;
+}
+
+function formatBytes(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' KB';
+  return (bytes/(1024*1024)).toFixed(2) + ' MB';
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  AI EXTRACTION (calls Flask /api/extract)
+// ══════════════════════════════════════════════════════════════════════════════
+async function extractData() {
+  if (!currentFile) return;
+  showPage('extracting');
+
+  const formData = new FormData();
+  formData.append('file', currentFile);
+
+  try {
+    const res  = await fetch('/api/extract', { method: 'POST', body: formData });
+    const json = await res.json();
+
+    if (!res.ok || json.error) {
+      showToast(json.error || 'Extraction failed', 'error');
+      showPage('upload');
+      return;
+    }
+
+    populateForm(json.data || {});
+    showPage('review');
+    showToast('Data extracted successfully!', 'success');
+  } catch (err) {
+    showToast('Network error: ' + err.message, 'error');
+    showPage('upload');
+  }
+}
+
+function populateForm(d) {
+  const set = (id, val) => {
+    const el = document.getElementById(id);
+    if (!el || val === null || val === undefined) return;
+    el.value = val;
+  };
+
+  set('f-name',       d.name);
+  set('f-gender',     d.gender);
+  set('f-dob',        d.dob);
+  set('f-residence',  d.place_of_residence);
+  set('f-profession', d.profession);
+  set('f-height',     d.height_cm);
+  set('f-weight',     d.weight_kg);
+  set('f-income',     d.yearly_income);
+  set('f-source',     d.source_of_income ? d.source_of_income.toLowerCase() : '');
+  set('f-base',       d.base_cover);
+  set('f-cir',        d.cir_cover);
+  set('f-accident',   d.accident_cover);
+  set('f-parents',    d.parent_health_status);
+
+  const hc = d.health_conditions || {};
+  set('f-thyroid',     hc.thyroid     || 0);
+  set('f-asthma',      hc.asthma      || 0);
+  set('f-hypertension',hc.hypertension|| 0);
+  set('f-diabetes',    hc.diabetes    || 0);
+  set('f-gut',         hc.gut_disorder|| 0);
+
+  const hb = d.habits || {};
+  set('f-smoking', hb.smoking || 'none');
+  set('f-alcohol', hb.alcohol || 'none');
+  set('f-tobacco', hb.tobacco || 'none');
+
+  // Risky occupations
+  ['athlete','pilot','driver','merchant_navy','oil_gas'].forEach(occ => {
+    const cbId = 'occ-' + (occ === 'merchant_navy' ? 'navy' : occ === 'oil_gas' ? 'oilgas' : occ);
+    const cb = document.getElementById(cbId);
+    if (cb) cb.checked = (d.risky_occupations || []).includes(occ);
+  });
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  READ FORM → PROPOSAL OBJECT
+// ══════════════════════════════════════════════════════════════════════════════
+function readForm() {
+  const g = id => document.getElementById(id);
+  const ri = id => parseInt(g(id).value, 10) || 0;
+  const rf = id => parseFloat(g(id).value) || 0;
+  const rs = id => g(id).value.trim();
+
+  const riskyOcc = [];
+  [['occ-athlete','athlete'],['occ-pilot','pilot'],['occ-driver','driver'],
+   ['occ-navy','merchant_navy'],['occ-oilgas','oil_gas']].forEach(([cbId, val]) => {
+    if (g(cbId) && g(cbId).checked) riskyOcc.push(val);
+  });
+
+  return {
+    name:               rs('f-name'),
+    gender:             rs('f-gender'),
+    dob:                rs('f-dob'),
+    place_of_residence: rs('f-residence'),
+    profession:         rs('f-profession'),
+    height_cm:          rf('f-height'),
+    weight_kg:          rf('f-weight'),
+    yearly_income:      rf('f-income'),
+    source_of_income:   rs('f-source'),
+    base_cover:         rf('f-base'),
+    cir_cover:          rf('f-cir'),
+    accident_cover:     rf('f-accident'),
+    parent_health_status: rs('f-parents'),
+    health_conditions: {
+      thyroid:      ri('f-thyroid'),
+      asthma:       ri('f-asthma'),
+      hypertension: ri('f-hypertension'),
+      diabetes:     ri('f-diabetes'),
+      gut_disorder: ri('f-gut'),
+    },
+    habits: {
+      smoking: rs('f-smoking'),
+      alcohol: rs('f-alcohol'),
+      tobacco: rs('f-tobacco'),
+    },
+    risky_occupations: riskyOcc,
+  };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  UNDERWRITING — calls Flask /api/underwrite for server-side computation
+// ══════════════════════════════════════════════════════════════════════════════
+async function runUnderwriting() {
+  const proposal = readForm();
+
+  if (!proposal.name)   { showToast('Please enter applicant name.',   'error'); return; }
+  if (!proposal.dob)    { showToast('Please enter date of birth.',     'error'); return; }
+  if (!proposal.height_cm || !proposal.weight_kg) { showToast('Please enter height and weight.', 'error'); return; }
+
+  try {
+    const res  = await fetch('/api/underwrite', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(proposal),
+    });
+    const json = await res.json();
+
+    if (!res.ok || json.error) {
+      showToast(json.error || 'Underwriting failed', 'error');
+      return;
+    }
+
+    lastReport = json.report;
+    renderResults(json.report, proposal);
+    showPage('results');
+  } catch (err) {
+    // Fallback to client-side computation
+    try {
+      const report = clientUnderwrite(proposal);
+      lastReport = report;
+      renderResults(report, proposal);
+      showPage('results');
+    } catch (e2) {
+      showToast('Underwriting error: ' + e2.message, 'error');
+    }
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  CLIENT-SIDE UNDERWRITING (mirrors Python engine)
+// ══════════════════════════════════════════════════════════════════════════════
+const BMI_EMR = [[-Infinity,18,10],[19,23,0],[24,28,5],[29,33,10],[34,38,15],[38,Infinity,20]];
+const FAM_EMR = { both_above_65:-10, one_above_65:-5, both_below_65:+10 };
+const HEALTH_EMR = {
+  thyroid:     [2.5,5,7.5,10],
+  asthma:      [5,7.5,10,12.5],
+  hypertension:[5,7.5,10,15],
+  diabetes:    [10,15,20,25],
+  gut_disorder:[5,10,15,20],
+};
+const COMORBID = {2:20,3:40};
+const HABIT_EMR = {
+  smoking:  {occasionally:5,moderate:10,high:15},
+  alcohol:  {occasionally:5,moderate:10,high:15},
+  tobacco:  {occasionally:5,moderate:10,high:15},
+};
+const HABIT_CO  = {2:20,3:40};
+const OCC_EXTRA = {athlete:2,pilot:6,driver:2,merchant_navy:3,oil_gas:3};
+const LIFE_RATE = [[20,35,'I',1],[40,60,'II',2],[65,85,'III',3],[90,120,'IV',4],
+                   [125,170,'V',6],[175,225,'VI',8],[230,275,'VII',10],[280,350,'VIII',12],
+                   [355,450,'IX',16],[455,550,'X',20]];
+const CIR_RATE  = [[0,20,'Std',null],[21,35,'I',1],[36,60,'II',2],[61,75,'III',3],[76,100,'IV',4]];
+const PREM_RATE = [[[18,35],[1.5,1.0,3.0]],[[36,40],[3.0,1.0,6.0]],
+                   [[41,45],[4.5,1.0,12.0]],[[46,50],[6.0,1.0,15.0]],
+                   [[51,55],[7.5,1.5,20.0]],[[56,60],[9.0,1.5,25.0]],
+                   [[61,65],[10.5,1.5,null]]];
+const FIN_UW    = [[0,35,25],[36,45,20],[46,50,15],[51,55,15],[56,999,10]];
+
+function calcAge(dob) {
+  const parts = dob.split('/');
+  if (parts.length !== 3) throw new Error('Date must be DD/MM/YYYY');
+  const [d,m,y] = parts.map(Number);
+  const today = new Date();
+  let age = today.getFullYear() - y;
+  if (today.getMonth()+1 < m || (today.getMonth()+1 === m && today.getDate() < d)) age--;
+  return age;
+}
+
+function calcBMI(w, h) { return +(w / ((h/100)**2)).toFixed(1); }
+
+function lookup(val, table) {
+  for (const row of table) {
+    if (val >= row[0] && val <= row[1]) return [row[2], row[3]];
+  }
+  return [null, null];
+}
+
+function getBmiEmr(bmi) {
+  for (const [l,h,emr] of BMI_EMR) { if (bmi >= l && bmi <= h) return emr; }
+  return 20;
+}
+
+function getPremRate(age) {
+  for (const [[l,h],r] of PREM_RATE) { if (age >= l && age <= h) return r; }
+  return null;
+}
+
+function getMaxMult(age) {
+  for (const [l,h,m] of FIN_UW) { if (age >= l && age <= h) return m; }
+  return 10;
+}
+
+function clientUnderwrite(p) {
+  const age = calcAge(p.dob);
+  const bmi = calcBMI(p.weight_kg, p.height_cm);
+
+  const emrBmi    = getBmiEmr(bmi);
+  const emrFamily = FAM_EMR[p.parent_health_status] || 0;
+
+  const healthBreak = {};
+  const activeC = [];
+  for (const [cond, sev] of Object.entries(p.health_conditions)) {
+    if (sev > 0 && HEALTH_EMR[cond]) {
+      healthBreak[cond] = HEALTH_EMR[cond][sev-1];
+      activeC.push(cond);
+    }
+  }
+  const emrHealthRaw = Object.values(healthBreak).reduce((a,b)=>a+b,0);
+  const comorbExtra  = activeC.length >= 2 ? (COMORBID[Math.min(activeC.length,3)] || 40) : 0;
+  const emrHealth    = emrHealthRaw + comorbExtra;
+
+  const habitBreak = {};
+  const activeH = [];
+  for (const [h, freq] of Object.entries(p.habits)) {
+    if (freq && freq !== 'none') {
+      const pts = (HABIT_EMR[h] || {})[freq] || 0;
+      habitBreak[h] = pts;
+      if (pts > 0) activeH.push(h);
+    }
+  }
+  const emrHabitsRaw = Object.values(habitBreak).reduce((a,b)=>a+b,0);
+  const habitExtra   = activeH.length >= 2 ? (HABIT_CO[Math.min(activeH.length,3)] || 40) : 0;
+  const emrHabits    = emrHabitsRaw + habitExtra;
+
+  const totalEmr = emrBmi + emrFamily + emrHealth + emrHabits;
+
+  const [lifeClass, lifeFactor] = lookup(totalEmr, LIFE_RATE);
+  const [cirClass,  cirFactor]  = lookup(totalEmr, CIR_RATE);
+
+  let decision;
+  if      (totalEmr > 550) decision = 'DECLINE';
+  else if (totalEmr > 275) decision = 'ACCEPTANCE WITH LOADING — Senior Actuary Sign-off Required';
+  else if (lifeClass)      decision = 'ACCEPTANCE WITH LOADING';
+  else                     decision = 'STANDARD ACCEPTANCE';
+
+  // Edge case flags
+  const flags = [];
+  if (age < 18)  flags.push({level:'DECLINE',   code:'AGE_MINOR',   message:`Age ${age} — below minimum insurable age of 18.`});
+  else if (age > 65) flags.push({level:'DECLINE',code:'AGE_LIMIT',  message:`Age ${age} — above maximum insurable age of 65.`});
+  else if (age > 60) flags.push({level:'WARNING',code:'CIR_AGE',    message:`CIR not available for age > 60. CIR cover will be declined.`});
+  if (bmi < 18)  flags.push({level:'MANUAL_UW', code:'BMI_UW',      message:`BMI ${bmi} — underweight, requires manual assessment.`});
+  if (bmi > 38)  flags.push({level:'MANUAL_UW', code:'BMI_OBESE',   message:`BMI ${bmi} — severe obesity, requires manual assessment.`});
+  if (activeC.length >= 4) flags.push({level:'MANUAL_UW', code:'EXCESS_COMORBID', message:`${activeC.length} active conditions — manual underwriting required.`});
+  if (totalEmr < 20)  flags.push({level:'INFO',    code:'EMR_LOW',   message:`Total EMR ${totalEmr} below table minimum. Standard acceptance.`});
+  if (totalEmr > 550) flags.push({level:'DECLINE', code:'EMR_MAX',   message:`Total EMR ${totalEmr} exceeds max 550. Policy declined.`});
+  else if (totalEmr > 450) flags.push({level:'MANUAL_UW', code:'EMR_HIGH', message:`Total EMR ${totalEmr} — Class X. Senior actuary sign-off required.`});
+  const maxMult = getMaxMult(age);
+  const maxAllowed = p.yearly_income * maxMult;
+  if (p.base_cover     > maxAllowed) flags.push({level:'MANUAL_UW', code:'FIN_LIFE',     message:`Base cover exceeds financial UW limit (${maxMult}x income).`});
+  if (p.cir_cover      > maxAllowed) flags.push({level:'MANUAL_UW', code:'FIN_CIR',      message:`CIR cover exceeds financial UW limit.`});
+  if (p.accident_cover > maxAllowed) flags.push({level:'MANUAL_UW', code:'FIN_ACCIDENT', message:`Accident cover exceeds financial UW limit.`});
+  if (p.risky_occupations.length > 1) flags.push({level:'MANUAL_UW', code:'MULTI_OCC', message:`Multiple risky occupations declared: ${p.risky_occupations.join(', ')}.`});
+
+  // Premium
+  const rates = getPremRate(age);
+  const premium = {};
+  if (!rates) {
+    premium.error = `Age ${age} outside insurable range 18–65.`;
+  } else {
+    const [lr, ar, cr] = rates;
+    const lifeBase = lr * p.base_cover / 1000;
+    const lifeLoadPct = 0.25 * (lifeFactor || 0);
+    const lifeLoad = lifeLoadPct * lifeBase;
+    const occExtra = p.risky_occupations.reduce((a,o) => a+(OCC_EXTRA[o]||0), 0);
+    const lifeOcc  = occExtra * p.base_cover / 1000;
+    premium.life = {
+      sum_assured: p.base_cover,
+      base_rate_per_mille: lr,
+      base_premium: +lifeBase.toFixed(2),
+      rating_class: lifeClass,
+      rating_factor: lifeFactor,
+      loading_pct: `${(lifeLoadPct*100).toFixed(0)}%`,
+      loading_amount: +lifeLoad.toFixed(2),
+      occ_extra_per_mille: occExtra,
+      occ_extra_amount: +lifeOcc.toFixed(2),
+      total_premium: +(lifeBase+lifeLoad+lifeOcc).toFixed(2),
+    };
+
+    const accBase = ar * p.accident_cover / 1000;
+    const accOcc  = occExtra * p.accident_cover / 1000;
+    premium.accident_rider = {
+      sum_assured: p.accident_cover,
+      base_rate_per_mille: ar,
+      base_premium: +accBase.toFixed(2),
+      occ_extra_amount: +accOcc.toFixed(2),
+      total_premium: +(accBase+accOcc).toFixed(2),
+    };
+
+    if (age > 60) {
+      premium.cir = { status: 'DECLINED — CIR not available above age 60' };
+    } else if (!cirClass || totalEmr > 100) {
+      premium.cir = { status: `DECLINED — Total EMR ${totalEmr.toFixed(1)} exceeds CIR max ratable EMR of 100` };
+    } else {
+      const cirBase = cr * p.cir_cover / 1000;
+      const cirLoadPct = 0.30 * (cirFactor || 0);
+      const cirLoad = cirLoadPct * cirBase;
+      premium.cir = {
+        sum_assured: p.cir_cover,
+        base_rate_per_mille: cr,
+        base_premium: +cirBase.toFixed(2),
+        rating_class: cirClass,
+        rating_factor: cirFactor,
+        loading_pct: `${(cirLoadPct*100).toFixed(0)}%`,
+        loading_amount: +cirLoad.toFixed(2),
+        total_premium: +(cirBase+cirLoad).toFixed(2),
+      };
+    }
+
+    premium.grand_total = +((premium.life.total_premium||0) +
+      (premium.accident_rider.total_premium||0) +
+      (premium.cir.total_premium||0)).toFixed(2);
+  }
+
+  return {
+    applicant: p.name, age, bmi,
+    emr_bmi: emrBmi, emr_family: emrFamily,
+    emr_health_breakdown: healthBreak, emr_comorbidity_extra: comorbExtra,
+    emr_health_total: emrHealth, active_conditions: activeC,
+    emr_habits_breakdown: habitBreak, emr_habit_coexistence_extra: habitExtra,
+    emr_habits_total: emrHabits, active_habits: activeH,
+    total_emr: totalEmr,
+    life_rating_class: lifeClass, life_rating_factor: lifeFactor,
+    cir_rating_class: cirClass,  cir_rating_factor:  cirFactor,
+    uw_decision: decision, flags, premium,
+  };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  RENDER RESULTS
+// ══════════════════════════════════════════════════════════════════════════════
+function renderResults(r, p) {
+  const container = document.getElementById('results-container');
+
+  // Decision colour
+  let decClass = 'accept';
+  const d = (r.uw_decision || '').toUpperCase();
+  if (d.includes('DECLINE')) decClass = 'decline';
+  else if (d.includes('LOADING')) decClass = 'loading';
+  else if (d.includes('MANUAL')) decClass = 'manual';
+
+  // EMR rows
+  const emrRows = [
+    ['BMI', r.emr_bmi],
+    ['Family History', r.emr_family],
+    ['Health Conditions (raw)', Object.values(r.emr_health_breakdown||{}).reduce((a,b)=>a+b,0)],
+    ['Comorbidity Loading', r.emr_comorbidity_extra],
+    ['Lifestyle Habits (raw)', Object.values(r.emr_habits_breakdown||{}).reduce((a,b)=>a+b,0)],
+    ['Habit Co-existence Loading', r.emr_habit_coexistence_extra],
+    ['TOTAL EMR', r.total_emr],
+  ];
+
+  // Premium HTML
+  let premHtml = '';
+  const pr = r.premium || {};
+  if (pr.error) {
+    premHtml = `<div style="color:var(--red); padding:16px;">${pr.error}</div>`;
+  } else {
+    const life = pr.life || {};
+    const acc  = pr.accident_rider || {};
+    const cir  = pr.cir || {};
+
+    premHtml = `
+      <div class="premium-cards">
+        <div class="premium-card">
+          <div class="p-title">Life Cover</div>
+          <div class="p-amount">₹${fmt(life.total_premium)}</div>
+          <div class="p-detail">Base: ₹${fmt(life.base_premium)} + Loading: ₹${fmt(life.loading_amount)}</div>
+          <div class="p-detail">Rate: ${life.base_rate_per_mille}‰ · Class: ${life.rating_class || 'Std'}</div>
+        </div>
+        <div class="premium-card">
+          <div class="p-title">Accident Rider</div>
+          <div class="p-amount">₹${fmt(acc.total_premium)}</div>
+          <div class="p-detail">Base: ₹${fmt(acc.base_premium)}</div>
+          <div class="p-detail">Rate: ${acc.base_rate_per_mille}‰</div>
+        </div>
+        <div class="premium-card">
+          <div class="p-title">Critical Illness</div>
+          ${cir.status
+            ? `<div class="p-amount" style="font-size:.9rem;color:var(--red)">Declined</div>
+               <div class="p-detail">${cir.status}</div>`
+            : `<div class="p-amount">₹${fmt(cir.total_premium)}</div>
+               <div class="p-detail">Base: ₹${fmt(cir.base_premium)} + Loading: ₹${fmt(cir.loading_amount)}</div>
+               <div class="p-detail">Rate: ${cir.base_rate_per_mille}‰ · Class: ${cir.rating_class || 'Std'}</div>`
+          }
+        </div>
+      </div>
+      <div class="premium-grand">
+        <div class="pg-label">Annual Grand Total Premium</div>
+        <div class="pg-amount">₹${fmt(pr.grand_total)}</div>
+      </div>`;
+  }
+
+  // Flags HTML
+  const flagsHtml = (r.flags||[]).length === 0
+    ? '<div style="color:var(--text-muted); padding:8px;">No flags raised.</div>'
+    : (r.flags||[]).map(f => {
+        const lvl = typeof f === 'object' ? f.level : f[0];
+        const msg = typeof f === 'object' ? f.message : f[2];
+        return `<div class="flag-item ${lvl}"><span class="flag-badge">${lvl}</span><span>${msg}</span></div>`;
+      }).join('');
+
+  container.innerHTML = `
+    <!-- Decision Banner -->
+    <div class="decision-banner ${decClass}">
+      <div class="decision-label">Underwriting Decision</div>
+      <div class="decision-value">${r.uw_decision}</div>
+    </div>
+
+    <!-- Key Metrics -->
+    <div class="metric-row">
+      <div class="metric-box"><div class="m-label">Applicant</div><div class="m-value" style="font-size:1rem">${r.applicant}</div></div>
+      <div class="metric-box"><div class="m-label">Age</div><div class="m-value">${r.age}</div></div>
+      <div class="metric-box"><div class="m-label">BMI</div><div class="m-value">${r.bmi}</div></div>
+      <div class="metric-box"><div class="m-label">Total EMR</div><div class="m-value">${r.total_emr}</div></div>
+      <div class="metric-box"><div class="m-label">Life Class</div><div class="m-value">${r.life_rating_class || 'Std'}</div></div>
+    </div>
+
+    <!-- EMR Breakdown -->
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-title">📊 EMR Breakdown</div>
+      <table class="emr-table">
+        <thead><tr><th>Component</th><th>EMR Points</th></tr></thead>
+        <tbody>
+          ${emrRows.map(([label, val]) =>
+            `<tr><td>${label}</td><td>${val != null ? val : '—'}</td></tr>`
+          ).join('')}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Flags -->
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-title">🚩 Underwriting Flags</div>
+      <div class="flag-list">${flagsHtml}</div>
+    </div>
+
+    <!-- Premium -->
+    <div class="card" style="margin-bottom:16px;">
+      <div class="card-title">💰 Premium Calculation</div>
+      ${premHtml}
+    </div>
+  `;
+}
+
+function fmt(n) {
+  if (n == null || isNaN(n)) return '—';
+  return Number(n).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  PDF REPORT DOWNLOAD
+// ══════════════════════════════════════════════════════════════════════════════
+function downloadPDF() {
+  if (!lastReport) { showToast('No report available', 'error'); return; }
+  const r = lastReport;
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+  const GOLD  = [200, 168, 75];
+  const DARK  = [13,  15,  20];
+  const WHITE = [240, 240, 245];
+  const GREY  = [120, 130, 150];
+
+  // Header bar
+  doc.setFillColor(...DARK);
+  doc.rect(0, 0, 210, 297, 'F');
+  doc.setFillColor(...GOLD);
+  doc.rect(0, 0, 210, 28, 'F');
+  doc.setTextColor(...DARK);
+  doc.setFontSize(16);
+  doc.setFont('helvetica', 'bold');
+  doc.text('AI Insurance Underwriting Report', 14, 18);
+
+  let y = 38;
+
+  // Decision
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(...GOLD);
+  doc.text('UNDERWRITING DECISION', 14, y);
+  y += 6;
+  doc.setFontSize(14);
+  doc.setTextColor(...WHITE);
+  doc.text(r.uw_decision || '—', 14, y);
+  y += 10;
+
+  // Applicant summary table
+  doc.autoTable({
+    startY: y,
+    head: [['Field', 'Value', 'Field', 'Value']],
+    body: [
+      ['Applicant', r.applicant, 'Age', r.age],
+      ['BMI', r.bmi, 'Total EMR', r.total_emr],
+      ['Life Rating Class', r.life_rating_class || 'Standard', 'CIR Rating Class', r.cir_rating_class || 'Standard'],
+    ],
+    theme: 'grid',
+    styles: { fillColor: [22, 27, 39], textColor: WHITE, fontSize: 9 },
+    headStyles: { fillColor: GOLD, textColor: DARK, fontStyle: 'bold' },
+    alternateRowStyles: { fillColor: [30, 37, 53] },
+    margin: { left: 14, right: 14 },
+  });
+  y = doc.lastAutoTable.finalY + 8;
+
+  // EMR Breakdown
+  doc.setFontSize(11);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(...GOLD);
+  doc.text('EMR BREAKDOWN', 14, y);
+  y += 4;
+
+  const emrData = [
+    ['BMI',                            r.emr_bmi],
+    ['Family History',                  r.emr_family],
+    ['Health Conditions (raw)',         Object.values(r.emr_health_breakdown||{}).reduce((a,b)=>a+b,0)],
+    ['Comorbidity Loading',             r.emr_comorbidity_extra],
+    ['Lifestyle Habits (raw)',          Object.values(r.emr_habits_breakdown||{}).reduce((a,b)=>a+b,0)],
+    ['Habit Co-existence Loading',      r.emr_habit_coexistence_extra],
+    ['TOTAL EMR',                       r.total_emr],
+  ];
+
+  doc.autoTable({
+    startY: y,
+    head: [['Component', 'EMR Points']],
+    body: emrData,
+    theme: 'grid',
+    styles: { fillColor: [22, 27, 39], textColor: WHITE, fontSize: 9 },
+    headStyles: { fillColor: GOLD, textColor: DARK, fontStyle: 'bold' },
+    alternateRowStyles: { fillColor: [30, 37, 53] },
+    margin: { left: 14, right: 14 },
+  });
+  y = doc.lastAutoTable.finalY + 8;
+
+  // Flags
+  if ((r.flags||[]).length > 0) {
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...GOLD);
+    doc.text('UNDERWRITING FLAGS', 14, y);
+    y += 4;
+
+    doc.autoTable({
+      startY: y,
+      head: [['Level', 'Code', 'Message']],
+      body: (r.flags||[]).map(f => [
+        typeof f === 'object' ? f.level : f[0],
+        typeof f === 'object' ? f.code  : f[1],
+        typeof f === 'object' ? f.message : f[2],
+      ]),
+      theme: 'grid',
+      styles: { fillColor: [22, 27, 39], textColor: WHITE, fontSize: 8 },
+      headStyles: { fillColor: GOLD, textColor: DARK, fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [30, 37, 53] },
+      columnStyles: { 2: { cellWidth: 'auto' } },
+      margin: { left: 14, right: 14 },
+    });
+    y = doc.lastAutoTable.finalY + 8;
+  }
+
+  // Premium
+  const pr = r.premium || {};
+  if (!pr.error) {
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...GOLD);
+    doc.text('PREMIUM SUMMARY', 14, y);
+    y += 4;
+
+    const life = pr.life || {};
+    const acc  = pr.accident_rider || {};
+    const cir  = pr.cir || {};
+
+    doc.autoTable({
+      startY: y,
+      head: [['Cover', 'Sum Assured', 'Base Premium', 'Loading', 'Total Premium']],
+      body: [
+        ['Life',       fmt2(life.sum_assured), fmt2(life.base_premium), fmt2(life.loading_amount), fmt2(life.total_premium)],
+        ['Accident',   fmt2(acc.sum_assured),  fmt2(acc.base_premium),  '—',                       fmt2(acc.total_premium)],
+        ['CIR',        cir.status ? '—' : fmt2(cir.sum_assured), cir.status ? cir.status : fmt2(cir.base_premium), cir.status ? '—' : fmt2(cir.loading_amount), cir.status ? '—' : fmt2(cir.total_premium)],
+        ['GRAND TOTAL','', '', '', fmt2(pr.grand_total)],
+      ],
+      theme: 'grid',
+      styles: { fillColor: [22, 27, 39], textColor: WHITE, fontSize: 9 },
+      headStyles: { fillColor: GOLD, textColor: DARK, fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [30, 37, 53] },
+      margin: { left: 14, right: 14 },
+    });
+  }
+
+  // Footer
+  doc.setFontSize(7);
+  doc.setTextColor(...GREY);
+  doc.text(`Generated: ${new Date().toLocaleString()} | AI Insurance Underwriting Tool`, 14, 290);
+
+  doc.save(`underwriting-report-${(r.applicant||'applicant').replace(/\s+/g,'-')}.pdf`);
+  showToast('PDF report downloaded!', 'success');
+}
+
+function fmt2(n) {
+  if (n == null || isNaN(n)) return '—';
+  return '₹' + Number(n).toLocaleString('en-IN', {minimumFractionDigits:2, maximumFractionDigits:2});
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+//  TOAST
+// ══════════════════════════════════════════════════════════════════════════════
+let toastTimer = null;
+function showToast(msg, type = 'info') {
+  const el = document.getElementById('toast');
+  el.textContent = msg;
+  el.className = 'show ' + (type || '');
+  if (toastTimer) clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { el.className = ''; }, 4000);
+}
+</script>
+</body>
+</html>
