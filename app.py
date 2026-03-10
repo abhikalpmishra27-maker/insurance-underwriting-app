@@ -2,6 +2,7 @@
 Flask application for AI-Powered Life Insurance Underwriting.
 """
 
+import json
 import os
 import base64
 import logging
@@ -131,7 +132,6 @@ Return ONLY the JSON object, no additional text or markdown fences."""
 
         raw_text = message.content[0].text.strip()
 
-        import json
         # Strip markdown code fences if the model included them
         if raw_text.startswith("```"):
             lines = raw_text.splitlines()
@@ -143,7 +143,13 @@ Return ONLY the JSON object, no additional text or markdown fences."""
         logger.info("Successfully extracted proposal data for: %s", extracted.get("name", "unknown"))
         return jsonify({"success": True, "data": extracted})
 
-    except Exception as exc:  # noqa: BLE001
+    except json.JSONDecodeError as exc:
+        logger.error("Claude returned non-JSON response: %s", exc)
+        return jsonify({"error": "AI returned an unexpected response format. Please try again."}), 500
+    except ImportError:
+        logger.error("anthropic package is not installed")
+        return jsonify({"error": "Server configuration error: AI library not installed."}), 500
+    except Exception as exc:  # noqa: BLE001 — catch-all for Anthropic SDK errors (APIError, etc.)
         logger.exception("Error calling Claude API: %s", exc)
         return jsonify({"error": f"AI extraction failed: {str(exc)}"}), 500
 
@@ -198,9 +204,11 @@ def api_underwrite():
         logger.info("Underwriting complete for: %s | decision: %s", proposal.name, report.get("uw_decision"))
         return jsonify({"success": True, "report": report})
 
-    except ValueError as exc:
+    except (ValueError, TypeError) as exc:
         return jsonify({"error": str(exc)}), 422
-    except Exception as exc:  # noqa: BLE001
+    except KeyError as exc:
+        return jsonify({"error": f"Missing data field: {exc}"}), 400
+    except Exception as exc:  # noqa: BLE001 — unexpected runtime errors
         logger.exception("Unexpected error during underwriting: %s", exc)
         return jsonify({"error": f"Underwriting error: {str(exc)}"}), 500
 
