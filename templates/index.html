@@ -722,6 +722,16 @@ function onAuthenticated(user) {
   showToast('Welcome, ' + user.username + '!', 'success');
 }
 
+function resetAuthUI() {
+  authMode = 'login';
+  document.getElementById('auth-title').textContent      = 'Welcome Back';
+  document.getElementById('auth-sub').textContent        = 'Sign in to access the underwriting tool';
+  document.getElementById('auth-submit-btn').textContent  = 'Sign In';
+  document.getElementById('auth-toggle-text').textContent = "Don't have an account?";
+  document.getElementById('auth-toggle-link').textContent = 'Sign Up';
+  document.getElementById('auth-password').setAttribute('autocomplete', 'current-password');
+}
+
 function onUnauthenticated() {
   document.getElementById('page-auth').classList.remove('hidden');
   document.getElementById('app-content').classList.add('hidden');
@@ -729,8 +739,7 @@ function onUnauthenticated() {
   document.getElementById('auth-username').value = '';
   document.getElementById('auth-password').value = '';
   hideAuthError();
-  authMode = 'login';
-  toggleAuthMode(); toggleAuthMode(); // reset UI
+  resetAuthUI();
 }
 
 // Check auth on page load
