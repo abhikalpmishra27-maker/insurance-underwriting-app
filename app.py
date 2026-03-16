@@ -6,12 +6,15 @@ import json
 import os
 import base64
 import logging
+import re
 
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
+from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from dotenv import load_dotenv
 
 from underwriting_engine import ProposalForm, underwrite
+from models import init_db, get_user_by_id, get_user_by_username, create_user, verify_password, User
 
 load_dotenv()
 
@@ -20,6 +23,26 @@ CORS(app)
 
 app.secret_key = os.environ.get("FLASK_SECRET_KEY", "dev-secret-key-change-in-production")
 
+# ---------------------------------------------------------------------------
+# Flask-Login setup
+# ---------------------------------------------------------------------------
+login_manager = LoginManager()
+login_manager.init_app(app)
+
+
+@login_manager.user_loader
+def load_user(user_id: str) -> User | None:
+    return get_user_by_id(int(user_id))
+
+
+@login_manager.unauthorized_handler
+def unauthorized():
+    return jsonify({"error": "Authentication required. Please log in."}), 401
+
+
+# Initialise the database on first import
+init_db()
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s %(levelname)s %(name)s : %(message)s",
@@ -27,6 +50,91 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 MAX_PDF_SIZE_BYTES = 5 * 1024 * 1024  # 5 MB
+
+USERNAME_RE = re.compile(r"^[A-Za-z0-9_]{3,30}$")
+
+
+# ---------------------------------------------------------------------------
+# Auth endpoints
+# ---------------------------------------------------------------------------
+
+
+@app.route("/api/auth/register", methods=["POST"])
+def register():
+    """Create a new user account."""
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"error": "Request body must be valid JSON."}), 400
+
+    username = (data.get("username") or "").strip()
+    password = data.get("password") or ""
+
+    if not username or not password:
+        return jsonify({"error": "Username and password are required."}), 400
+
+    if not USERNAME_RE.match(username):
+        return jsonify({
+            "error": "Username must be 3-30 characters and contain only letters, numbers, and underscores."
+        }), 400
+
+    if len(password) < 8:
+        return jsonify({"error": "Password must be at least 8 characters."}), 400
+
+    if get_user_by_username(username):
+        return jsonify({"error": "Username is already taken."}), 409
+
+    user = create_user(username, password)
+    login_user(user)
+    logger.info("New user registered: %s", username)
+    return jsonify({"success": True, "user": {"id": user.id, "username": user.username}}), 201
+
+
+@app.route("/api/auth/login", methods=["POST"])
+def login():
+    """Authenticate an existing user."""
+    data = request.get_json(silent=True)
+    if not data:
+        return jsonify({"error": "Request body must be valid JSON."}), 400
+
+    username = (data.get("username") or "").strip()
+    password = data.get("password") or ""
+
+    if not username or not password:
+        return jsonify({"error": "Username and password are required."}), 400
+
+    row = get_user_by_username(username)
+    if not row or not verify_password(password, row["password"]):
+        return jsonify({"error": "Invalid username or password."}), 401
+
+    user = User(id=row["id"], username=row["username"])
+    login_user(user)
+    logger.info("User logged in: %s", username)
+    return jsonify({"success": True, "user": {"id": user.id, "username": user.username}})
+
+
+@app.route("/api/auth/logout", methods=["POST"])
+@login_required
+def logout():
+    """Log out the current user."""
+    logger.info("User logged out: %s", current_user.username)
+    logout_user()
+    return jsonify({"success": True})
+
+
+@app.route("/api/auth/status")
+def auth_status():
+    """Return current authentication state."""
+    if current_user.is_authenticated:
+        return jsonify({
+            "authenticated": True,
+            "user": {"id": current_user.id, "username": current_user.username},
+        })
+    return jsonify({"authenticated": False})
+
+
+# ---------------------------------------------------------------------------
+# Page routes
+# ---------------------------------------------------------------------------
 
 
 @app.route("/")
@@ -40,6 +148,7 @@ def health():
 
 
 @app.route("/api/extract", methods=["POST"])
+@login_required
 def extract():
     """
     Accept a PDF file upload, send it to the Claude API for extraction,
@@ -155,6 +264,7 @@ Return ONLY the JSON object, no additional text or markdown fences."""
 
 
 @app.route("/api/underwrite", methods=["POST"])
+@login_required
 def api_underwrite():
     """
     Accept proposal data as JSON and run it through the Python underwriting engine.

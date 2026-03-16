@@ -280,6 +280,83 @@
     }
     .tab-btn.active { color: var(--gold); border-bottom-color: var(--gold); }
 
+    /* ── Auth Page ───────────────────────────────────────────────── */
+    #page-auth {
+      display: flex; justify-content: center; align-items: center;
+      min-height: calc(100vh - 120px);
+    }
+    .auth-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 40px 36px;
+      box-shadow: var(--shadow);
+      width: 100%; max-width: 400px;
+    }
+    .auth-card h2 {
+      color: var(--gold-light);
+      font-size: 1.3rem; font-weight: 700;
+      margin-bottom: 8px; text-align: center;
+    }
+    .auth-card .auth-sub {
+      color: var(--text-muted); font-size: .85rem;
+      text-align: center; margin-bottom: 28px;
+    }
+    .auth-card .form-group { margin-bottom: 18px; }
+    .auth-card .form-group label {
+      display: block; font-size: .8rem; font-weight: 600;
+      color: var(--text-muted); margin-bottom: 6px; text-transform: uppercase;
+      letter-spacing: .5px;
+    }
+    .auth-card .form-group input {
+      width: 100%; padding: 10px 14px; font-size: .95rem;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text);
+      transition: border-color .2s;
+    }
+    .auth-card .form-group input:focus {
+      outline: none; border-color: var(--gold);
+    }
+    .auth-card .btn-gold {
+      width: 100%; justify-content: center; margin-top: 8px;
+      padding: 12px; font-size: 1rem;
+    }
+    .auth-card .auth-toggle {
+      text-align: center; margin-top: 18px;
+      font-size: .85rem; color: var(--text-muted);
+    }
+    .auth-card .auth-toggle a {
+      color: var(--gold); cursor: pointer; text-decoration: underline;
+    }
+    .auth-error {
+      background: rgba(231,76,60,.12); border: 1px solid var(--red);
+      border-radius: 8px; padding: 10px 14px; margin-bottom: 16px;
+      color: var(--red); font-size: .85rem; display: none;
+    }
+
+    /* ── Header user area ───────────────────────────────────────── */
+    .header-right {
+      margin-left: auto; display: flex; align-items: center; gap: 14px;
+    }
+    .user-badge {
+      display: flex; align-items: center; gap: 8px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 20px; padding: 6px 14px 6px 10px;
+      font-size: .85rem; color: var(--gold-light); font-weight: 600;
+    }
+    .user-badge .avatar {
+      width: 26px; height: 26px; border-radius: 50%;
+      background: linear-gradient(135deg, var(--gold-dark), var(--gold));
+      display: flex; align-items: center; justify-content: center;
+      font-size: .7rem; color: #000; font-weight: 700;
+    }
+    .btn-logout {
+      background: transparent; border: 1px solid var(--border);
+      border-radius: 8px; padding: 6px 14px; font-size: .8rem;
+      color: var(--text-muted); cursor: pointer; transition: all .2s;
+    }
+    .btn-logout:hover { border-color: var(--red); color: var(--red); }
+
     /* ── Hidden/Shown ────────────────────────────────────────────── */
     .hidden { display: none !important; }
 
@@ -306,9 +383,46 @@
     <h1>AI Insurance Underwriting Tool</h1>
     <p>Automated life insurance risk assessment powered by Claude AI</p>
   </div>
+  <div class="header-right hidden" id="user-area">
+    <div class="user-badge">
+      <div class="avatar" id="user-avatar"></div>
+      <span id="user-display-name"></span>
+    </div>
+    <button class="btn-logout" id="btn-logout">Logout</button>
+  </div>
 </header>
 
 <main>
+
+  <!-- ── AUTH: Login / Register ── -->
+  <div id="page-auth">
+    <div class="auth-card">
+      <h2 id="auth-title">Welcome Back</h2>
+      <p class="auth-sub" id="auth-sub">Sign in to access the underwriting tool</p>
+
+      <div class="auth-error" id="auth-error"></div>
+
+      <form id="auth-form">
+        <div class="form-group">
+          <label for="auth-username">Username</label>
+          <input type="text" id="auth-username" placeholder="Enter your username" required autocomplete="username" />
+        </div>
+        <div class="form-group">
+          <label for="auth-password">Password</label>
+          <input type="password" id="auth-password" placeholder="Enter your password" required autocomplete="current-password" />
+        </div>
+        <button type="button" class="btn btn-gold" id="auth-submit-btn">Sign In</button>
+      </form>
+
+      <div class="auth-toggle">
+        <span id="auth-toggle-text">Don't have an account?</span>
+        <a id="auth-toggle-link-btn"><span id="auth-toggle-link">Sign Up</span></a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── APP: Underwriting workflow (hidden until authenticated) ── -->
+  <div id="app-content" class="hidden">
 
   <!-- Progress Steps -->
   <div class="steps">
@@ -536,12 +650,100 @@
     </div>
   </div>
 
+  </div><!-- end #app-content -->
+
 </main>
 
 <!-- Toast -->
 <div id="toast"></div>
 
 <script>
+// ══════════════════════════════════════════════════════════════════════════════
+//  AUTH
+// ══════════════════════════════════════════════════════════════════════════════
+let authMode = 'login';  // 'login' or 'register'
+
+function toggleAuthMode() {
+  authMode = authMode === 'login' ? 'register' : 'login';
+  document.getElementById('auth-title').textContent     = authMode === 'login' ? 'Welcome Back' : 'Create Account';
+  document.getElementById('auth-sub').textContent       = authMode === 'login' ? 'Sign in to access the underwriting tool' : 'Register a new account to get started';
+  document.getElementById('auth-submit-btn').textContent = authMode === 'login' ? 'Sign In' : 'Sign Up';
+  document.getElementById('auth-toggle-text').textContent = authMode === 'login' ? "Don't have an account?" : 'Already have an account?';
+  document.getElementById('auth-toggle-link').textContent = authMode === 'login' ? 'Sign Up' : 'Sign In';
+  document.getElementById('auth-password').setAttribute('autocomplete', authMode === 'login' ? 'current-password' : 'new-password');
+  hideAuthError();
+}
+
+function showAuthError(msg) {
+  const el = document.getElementById('auth-error');
+  el.textContent = msg;
+  el.style.display = 'block';
+}
+
+function hideAuthError() {
+  document.getElementById('auth-error').style.display = 'none';
+}
+
+async function handleAuth(e) {
+  e.preventDefault();
+  hideAuthError();
+  const username = document.getElementById('auth-username').value.trim();
+  const password = document.getElementById('auth-password').value;
+  if (!username || !password) { showAuthError('Please fill in all fields.'); return; }
+
+  const endpoint = authMode === 'login' ? '/api/auth/login' : '/api/auth/register';
+  try {
+    const res = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+    });
+    const data = await res.json();
+    if (!res.ok) { showAuthError(data.error || 'Something went wrong.'); return; }
+    onAuthenticated(data.user);
+  } catch (err) {
+    showAuthError('Network error. Please try again.');
+  }
+}
+
+async function doLogout() {
+  try {
+    await fetch('/api/auth/logout', { method: 'POST' });
+  } catch (_) { /* ignore */ }
+  onUnauthenticated();
+}
+
+function onAuthenticated(user) {
+  document.getElementById('page-auth').classList.add('hidden');
+  document.getElementById('app-content').classList.remove('hidden');
+  document.getElementById('user-area').classList.remove('hidden');
+  document.getElementById('user-display-name').textContent = user.username;
+  document.getElementById('user-avatar').textContent = user.username.charAt(0).toUpperCase();
+  showToast('Welcome, ' + user.username + '!', 'success');
+}
+
+function onUnauthenticated() {
+  document.getElementById('page-auth').classList.remove('hidden');
+  document.getElementById('app-content').classList.add('hidden');
+  document.getElementById('user-area').classList.add('hidden');
+  document.getElementById('auth-username').value = '';
+  document.getElementById('auth-password').value = '';
+  hideAuthError();
+  authMode = 'login';
+  toggleAuthMode(); toggleAuthMode(); // reset UI
+}
+
+// Check auth on page load
+(async function checkAuth() {
+  try {
+    const res = await fetch('/api/auth/status');
+    const data = await res.json();
+    if (data.authenticated) {
+      onAuthenticated(data.user);
+    }
+  } catch (_) { /* stay on login page */ }
+})();
+
 // ══════════════════════════════════════════════════════════════════════════════
 //  STATE
 // ══════════════════════════════════════════════════════════════════════════════
@@ -1250,6 +1452,13 @@ function showToast(msg, type = 'info') {
   if (toastTimer) clearTimeout(toastTimer);
   toastTimer = setTimeout(() => { el.className = ''; }, 4000);
 }
+// ══════════════════════════════════════════════════════════════════════════════
+//  EVENT LISTENERS
+// ══════════════════════════════════════════════════════════════════════════════
+document.getElementById('auth-form').addEventListener('submit', handleAuth);
+document.getElementById('auth-submit-btn').addEventListener('click', handleAuth);
+document.getElementById('auth-toggle-link-btn').addEventListener('click', toggleAuthMode);
+document.getElementById('btn-logout').addEventListener('click', doLogout);
 </script>
 </body>
 </html>

@@ -36,3 +36,6 @@ htmlcov/
 
 # Static files generated at runtime
 instance/
+
+# SQLite database
+*.db
